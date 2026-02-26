@@ -21,19 +21,18 @@ class OpenStackManager:
         limits = self.conn.compute.get_limits(project=project.id)
         return limits.absolute 
 
-    def create_vps_with_access(self, instance_name, network_name, image_name, flavor_name, key_name):
+    def create_vps_with_access(self, instance_name, network_id, image_name, flavor_name, key_name):
         # 인스턴스 생성 후 접속용 Floating IP까지 자동 매핑
         try:
+            # 자원 찾기
             image = self.conn.compute.find_image(image_name)
             flavor = self.conn.compute.find_flavor(flavor_name)
-            networks = list(self.conn.network.networks(name=network_name))
-            if not networks:
-                raise Exception(f"Network '{network_name}'을 찾을 수 없습니다.")
-            network_id = networks[0].id
             
+            # 보안 그룹 생성
             sg_name = f"{instance_name}-sg"
             sg = self.create_security_group_with_rules(sg_name)
             
+            # 서버 생성
             server = self.conn.compute.create_server(
                 name=instance_name,
                 image_id=image.id,
@@ -43,29 +42,31 @@ class OpenStackManager:
                 security_groups=[{"name": sg.name}]
             )
             
-            # 인스턴스가 ACTIVE 상태가 될 때까지 대기
+            # ACTIVE 상태 대기
             server = self.conn.compute.wait_for_server(server)
             
-            # Floating IP 할당 및 연결 (외부 네트워크에서 IP 하나를 가져옴)
+            # Floating IP 처리 초기화
+            fip_addr = "N/A"
             ext_nets = list(self.conn.network.networks(name="ext_net"))
             
             if ext_nets:
-                # 인스턴스에 연결된 포트(Port) ID 찾기
                 ports = list(self.conn.network.ports(device_id=server.id))
-                if not ports:
-                    raise Exception("인스턴스에 연결된 네트워크 포트를 찾을 수 없습니다.")
-                port_id = ports[0].id
-                
-                # floating IP 생성 및 포트 결합
-                fip = self.conn.network.create_ip(
-                    floating_network_id=ext_nets[0].id,
-                    port_id=port_id
-                )
-                fip_addr = fip.floating_ip_address
-                
-            addresses = server.addresses.get(network_name, [])
-            fixed_ip = addresses[0]['addr'] if addresses else "N/A"
+                if ports:
+                    port_id = ports[0].id
+                    fip = self.conn.network.create_ip(
+                        floating_network_id=ext_nets[0].id,
+                        port_id=port_id
+                    )
+                    fip_addr = fip.floating_ip_address
             
+            # Fixed IP 추출 (네트워크 이름을 몰라도 첫 번째 사설 IP를 가져옴)
+            fixed_ip = "N/A"
+            for net_addresses in server.addresses.values():
+                for addr in net_addresses:
+                    if addr.get('OS-EXT-IPS:type') == 'fixed':
+                        fixed_ip = addr['addr']
+                        break
+
             return {
                 "instance_id": server.id,
                 "fixed_ip": fixed_ip,

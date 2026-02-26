@@ -1,7 +1,7 @@
 import sqlite3
 
 def init_db():
-    conn = sqlite3.connect('cloud_portal_db')
+    conn = sqlite3.connect('cloud_portal.db')
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -18,20 +18,22 @@ def init_db():
     conn.close()
     
     
-init_db()
+#init_db()
 
 # 사용자 등록 스크립트
 
 def add_user(username, project_id, network_id, project_name):
-    conn = sqlite3.connect('cloud_portal_db')
+    conn = sqlite3.connect('cloud_portal.db')
     cursor = conn.cursor()
     try:
         cursor.execute('INSERT INTO users (username, project_id, network_id, project_name) VALUES (?, ?, ?, ?)',
                        (username, project_id, network_id, project_name))
+        conn.commit()
+        
         print(f"유저 {username} 등록 완료 (Network: {network_id})")
     except sqlite3.IntegrityError:
         print("이미 존재하는 유저입니다.")
     finally:
         conn.close()
 
-# add_user("KHS_admin", "proj-uuid-1", "net-uuid-vxlan-1", "Alpha_Project")
+add_user("KHS_admin", "f3b4f0ad1ded48b48533c70d095055c6", "31b7198f-8093-449a-8ef9-f979f3a0fbca", "KHS_Project")

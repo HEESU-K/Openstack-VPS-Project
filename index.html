@@ -2,20 +2,28 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>Cloud Portal</title>
+    <title>HCLOUD - Cloud Management Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-900 text-white p-10">
     <div class="max-w-6xl mx-auto">
-        <h1 class="text-3xl font-bold mb-8 text-blue-400">DCloud Infra - Instance 관리</h1>
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">HCloud Infra - Instance 관리</h1>
+                <p id="user-greeting" class="text-gray-400 mt-1">시스템 관리자 모드로 접속 중</p>
+            </div>
+            <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-bold transition">
+                + 새 인스턴스 배포
+            </button>
+        </div>
         
         <div class="grid grid-cols-3 gap-6 mb-10">
             <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                <p class="text-gray-400">활성 인스턴스</p>
+                <p class="text-gray-400">전체 활성 인스턴스</p>
                 <p id="total-instances" class="text-2xl font-bold">0 / 10</p>
             </div>
-            </div>
+        </div>
 
         <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
             <table class="w-full text-left">
@@ -23,7 +31,7 @@
                     <tr>
                         <th class="p-4">이름</th>
                         <th class="p-4">상태</th>
-                        <th class="p-4">IP 주소</th>
+                        <th class="p-4">IP 주소 (Fixed/Floating)</th>
                         <th class="p-4">CPU 사용률</th>
                         <th class="p-4">작업</th>
                     </tr>
@@ -34,22 +42,41 @@
         </div>
 
         <div class="mt-10 bg-gray-800 p-6 rounded-lg border border-gray-700">
-            <h2 class="text-xl font-bold mb-4">실시간 리소스 추이 (CPU)</h2>
+            <h2 class="text-xl font-bold mb-4">전체 리소스 실시간 추이 (CPU)</h2>
             <canvas id="cpuChart" height="100"></canvas>
         </div>
     </div>
-    
+
+    <div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-8 rounded-lg border border-gray-700 w-96">
+            <h2 class="text-xl font-bold mb-4 text-white">새 인스턴스 배포</h2>
+            <div class="mb-4">
+                <label class="block text-gray-400 mb-2">인스턴스 이름</label>
+                <input type="text" id="new-inst-name" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white" placeholder="예: web-server-01">
+            </div>
+            <div class="mb-6">
+                <label class="block text-gray-400 mb-2">대상 사용자 (테넌트 격리)</label>
+                <select id="user-select" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white">
+                    </select>
+                <p class="text-xs text-gray-500 mt-2">* 선택한 사용자의 VXLAN 네트워크에 격리 배포됩니다.</p>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white">취소</button>
+                <button id="submit-btn" onclick="submitCreate()" class="bg-blue-600 px-4 py-2 rounded font-bold">생성 시작</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // 1. 차트 초기화 (함수 밖에서 한 번만 실행)
+        // 1. 글로벌 차트 객체 초기화
         const ctx = document.getElementById('cpuChart').getContext('2d');
         const cpuChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // 시간축 (X축)
+                labels: [],
                 datasets: [{
-                    label: '전체 인스턴스 평균 CPU 사용률 (%)',
-                    data: [], // 실제 사용량 (Y축)
+                    label: '평균 CPU 사용률 (%)',
+                    data: [],
                     borderColor: 'rgb(59, 130, 246)',
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     fill: true,
@@ -58,18 +85,42 @@
             },
             options: {
                 responsive: true,
-                scales: {
-                    y: { beginAtZero: true, max: 100 } // CPU는 0~100% 범위
-                }
+                scales: { y: { beginAtZero: true, max: 100 } }
             }
         });
 
+        // 2. 초기 로드 (유저 목록 및 대시보드 데이터)
+        window.onload = async () => {
+            await fetchUsers();
+            await fetchDashboard();
+            setInterval(fetchDashboard, 10000); // 10초마다 갱신
+        };
+
+        // 3. DB 유저 목록 가져오기
+        async function fetchUsers() {
+            try {
+                const response = await fetch('http://localhost:8000/api/users');
+                const users = await response.json();
+                const select = document.getElementById('user-select');
+                
+                if(users.length > 0) {
+                    select.innerHTML = users.map(u => 
+                        `<option value="${u.username}">${u.username} (${u.project_name})</option>`
+                    ).join('');
+                } else {
+                    select.innerHTML = '<option value="">등록된 유저 없음</option>';
+                }
+            } catch (e) {
+                console.error("유저 목록 로드 실패", e);
+            }
+        }
+
+        // 4. 대시보드 데이터(인스턴스 + 메트릭) 가져오기
         async function fetchDashboard() {
             try {
                 const response = await fetch('http://localhost:8000/api/dashboard');
                 const data = await response.json();
                 
-                // 테이블 업데이트 로직
                 const list = document.getElementById('instance-list');
                 list.innerHTML = '';
                 
@@ -77,7 +128,6 @@
                 let count = 0;
 
                 data.forEach(inst => {
-                    // 평균 CPU 계산을 위한 로직 (No Data 제외)
                     if (inst.cpu !== 'No Data') {
                         totalCpu += parseFloat(inst.cpu);
                         count++;
@@ -88,42 +138,71 @@
                             <td class="p-4 font-semibold">${inst.name}</td>
                             <td class="p-4"><span class="px-2 py-1 ${inst.status === 'ACTIVE' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'} rounded text-xs">${inst.status}</span></td>
                             <td class="p-4 text-sm">
-                                <div class="text-gray-400">내부: ${inst.fixed_ip}</div>
-                                <div class="text-blue-400">외부: ${inst.floating_ip}</div>
+                                <div class="text-gray-400 text-xs">Fixed: ${inst.fixed_ip}</div>
+                                <div class="text-blue-400 font-bold">Floating: ${inst.floating_ip}</div>
                             </td>
                             <td class="p-4 text-blue-400 font-mono">${inst.cpu}${inst.cpu !== 'No Data' ? '%' : ''}</td>
-                            <td class="p-4"><button class="text-red-400 hover:underline">삭제</button></td>
+                            <td class="p-4"><button class="text-red-400 hover:underline text-sm">인스턴스 삭제</button></td>
                         </tr>
                     `;
                 });
 
                 document.getElementById('total-instances').innerText = `${data.length} / 10`;
 
-                // 2. 그래프 데이터 업데이트 로직
+                // 차트 업데이트
                 const avgCpu = count > 0 ? (totalCpu / count).toFixed(2) : 0;
                 const now = new Date().toLocaleTimeString();
-
-                // 데이터가 너무 많아지면 앞부분 삭제 (최근 10개만 유지)
                 if (cpuChart.data.labels.length > 10) {
                     cpuChart.data.labels.shift();
                     cpuChart.data.datasets[0].data.shift();
                 }
-
-                // 새로운 데이터 추가
                 cpuChart.data.labels.push(now);
                 cpuChart.data.datasets[0].data.push(avgCpu);
-                
-                // 차트 갱신
                 cpuChart.update();
 
             } catch (error) {
-                console.error("데이터 로드 실패:", error);
+                console.error("대시보드 갱신 실패:", error);
             }
         }
-        
-        // 10초마다 데이터 갱신
-        setInterval(fetchDashboard, 10000);
-        fetchDashboard();
+
+        // 5. 모달 및 생성 로직
+        function openModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+        function closeModal() { document.getElementById('create-modal').classList.add('hidden'); }
+
+        async function submitCreate() {
+            const name = document.getElementById('new-inst-name').value;
+            const username = document.getElementById('user-select').value;
+            const btn = document.getElementById('submit-btn');
+            
+            if(!name) return alert("인스턴스 이름을 입력하세요.");
+            if(!username) return alert("사용자를 선택하세요.");
+
+            btn.innerText = "배포 중 (VXLAN 설정 중)...";
+            btn.disabled = true;
+
+            try {
+                // 주소 끝에 's'가 붙었는지, method가 'POST'인지 확인!
+                const response = await fetch(`http://localhost:8000/api/instances?name=${name}&username=${username}`, {
+                    method: 'POST' 
+                });
+                
+                const result = await response.json();
+                
+                if(response.ok && result.status === "success") {
+                    alert(`성공: ${username}님의 테넌트에 배포되었습니다.`);
+                    closeModal();
+                    fetchDashboard(); 
+                } else {
+                    // 에러 메시지가 있다면 출력
+                    alert("배포 실패: " + (result.detail || "알 수 없는 에러"));
+                }
+            } catch (e) {
+                alert("배포 실패: " + e.message);
+            } finally {
+                btn.innerText = "생성 시작";
+                btn.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
