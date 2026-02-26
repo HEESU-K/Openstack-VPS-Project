@@ -1,0 +1,248 @@
+import openstack
+import requests
+import time
+from openstack.connection import Connection
+
+class OpenStackManager:
+    # clouds.yaml을 사용하여 인증 정보 외부화
+    # 보안 및 유지보수를 위해 SDK의 Connection 프로토콜 활용
+    def __init__(self, cloud_name='my-openstack'):
+        self.conn = openstack.connect(cloud=cloud_name)
+        
+    def get_network_info(self):
+        # Neutron API를 호출해 현재 활성화된 네트워크와 서브넷 조회
+        networks = list(self.conn.network.networks())
+        return networks
+    
+    def get_compute_quotas(self, project_name='admin'):
+        # Nova API를 호출해 프로젝트의 CPU/RAM 할당량 확인
+        # 사용량 요약 기능을 위한 데이터 소스
+        project = self.conn.identity.find_project(project_name)
+        limits = self.conn.compute.get_limits(project=project.id)
+        return limits.absolute 
+
+    def create_vps_with_access(self, instance_name, network_name, image_name, flavor_name, key_name):
+        # 인스턴스 생성 후 접속용 Floating IP까지 자동 매핑
+        try:
+            image = self.conn.compute.find_image(image_name)
+            flavor = self.conn.compute.find_flavor(flavor_name)
+            networks = list(self.conn.network.networks(name=network_name))
+            if not networks:
+                raise Exception(f"Network '{network_name}'을 찾을 수 없습니다.")
+            network_id = networks[0].id
+            
+            sg_name = f"{instance_name}-sg"
+            sg = self.create_security_group_with_rules(sg_name)
+            
+            server = self.conn.compute.create_server(
+                name=instance_name,
+                image_id=image.id,
+                flavor_id=flavor.id,
+                networks=[{"uuid": network_id}],
+                key_name=key_name,
+                security_groups=[{"name": sg.name}]
+            )
+            
+            # 인스턴스가 ACTIVE 상태가 될 때까지 대기
+            server = self.conn.compute.wait_for_server(server)
+            
+            # Floating IP 할당 및 연결 (외부 네트워크에서 IP 하나를 가져옴)
+            ext_nets = list(self.conn.network.networks(name="ext_net"))
+            
+            if ext_nets:
+                # 인스턴스에 연결된 포트(Port) ID 찾기
+                ports = list(self.conn.network.ports(device_id=server.id))
+                if not ports:
+                    raise Exception("인스턴스에 연결된 네트워크 포트를 찾을 수 없습니다.")
+                port_id = ports[0].id
+                
+                # floating IP 생성 및 포트 결합
+                fip = self.conn.network.create_ip(
+                    floating_network_id=ext_nets[0].id,
+                    port_id=port_id
+                )
+                fip_addr = fip.floating_ip_address
+                
+            addresses = server.addresses.get(network_name, [])
+            fixed_ip = addresses[0]['addr'] if addresses else "N/A"
+            
+            return {
+                "instance_id": server.id,
+                "fixed_ip": fixed_ip,
+                "floating_ip": fip_addr
+            }
+        except Exception as e:
+            print(f"[Internal Error] {e}")
+            raise e
+
+    def create_security_group_with_rules(self, sg_name):
+        # 전용 보안 그룹 생성 및 필수 규칙(SSH, ICMP, 9100) 추가
+        
+        # 기존 보안 그룹 확인
+        existing_sg = self.conn.network.find_security_group(sg_name)
+        if existing_sg:
+            return existing_sg
+        
+        # 보안 그룹 생성 및 규칙 추가
+        print(f"--- 보안 그룹 {sg_name} 생성 중... ---")
+        sg = self.conn.network.create_security_group(name=sg_name)
+        
+        self.conn.network.create_security_group_rule(
+            security_group_id=sg.id,
+            direction='ingress',
+            ethertype='IPv4',
+            protocol='tcp',
+            port_range_min=22,
+            port_range_max=22
+        )
+        
+        self.conn.network.create_security_group_rule(
+            security_group_id=sg.id,
+            direction='ingress',
+            ethertype='IPv4',
+            protocol='icmp'
+        )
+        
+        # node-exporter
+        self.conn.network.create_security_group_rule(
+            security_group_id=sg.id,
+            direction='ingress',
+            ethertype='IPv4',
+            protocol='tcp',
+            port_range_min=9100,
+            port_range_max=9100
+        )
+        
+        return sg
+
+
+    def get_instance_cpu_usage(self, prometheus_url, instance_ip):
+        # 프로메테우스 API를 호출해 특정 인스턴스(IP)의 CPU 사용량 조회
+        
+        query = f'100 - (avg by (instance) (irate(node_cpu_seconds_total{{instance=~"{instance_ip}:.*", mode="idle"}}[1m])) * 100)'
+        
+        try:
+            response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query}, timeout=5)
+            result = response.json()
+            
+            if result['data']['result']:
+                return round(float(result['data']['result'][0]['value'][1]), 2)
+            return "No Data"
+        except Exception as e:
+            print(f"Monitoring Error : {e}")
+        
+    
+    def get_unified_dashboard_data(self, prometheus_url):
+        # 오픈스택 인스턴스 정보와 프로메테우스 메트릭 통합
+        
+        unified_data = []
+        
+        servers = self.conn.compute.servers()
+        
+        for server in servers:
+            fixed_ip = "N/A"
+            floating_ip = "N/A"
+
+            # 모든 네트워크 정보를 돌며 Fixed와 Floating IP를 구분해서 추출
+            for net_name, addr_list in server.addresses.items():
+                for addr in addr_list:
+                    if addr.get('OS-EXT-IPS:type') == 'floating':
+                        floating_ip = addr['addr']
+                    elif addr.get('OS-EXT-IPS:type') == 'fixed':
+                        fixed_ip = addr['addr']
+            
+            cpu_usage = self.get_instance_cpu_usage(prometheus_url, floating_ip)
+            
+            unified_data.append({
+                "id": server.id,
+                "name": server.name,
+                "status": server.status,
+                "fixed_ip": fixed_ip,
+                "floating_ip": floating_ip,
+                "cpu": cpu_usage,
+                "created_at": server.created_at
+            })
+        return unified_data
+
+
+'''
+# 인스턴스 생성 후 floating ip 할당 테스트
+# create_vps_with_access 테스트
+if __name__ == "__main__":
+    manager = OpenStackManager()
+    
+    INSTANCE_NAME = "portfolio-vps-01"
+    NETWORK_NAME = "shared_net" 
+    IMAGE_NAME = "cirros" 
+    FLAVOR_NAME = "m1.tiny"
+    KEY_NAME = "khs-main-keypair"
+    
+    try:
+        print(f"--- [테스트] {INSTANCE_NAME} 생성 시작 ---")
+        result = manager.create_vps_with_access(
+            INSTANCE_NAME, NETWORK_NAME, IMAGE_NAME, FLAVOR_NAME, KEY_NAME
+        )
+        print("--- [성공] 인스턴스 정보 ---")
+        print(f"ID: {result['instance_id']}")
+        print(f"Fixed IP: {result['fixed_ip']}")
+        print(f"Floating IP: {result['floating_ip']}")
+        
+    except Exception as e:
+        print(f"--- [실패] 에러 발생: {e} ---")
+'''
+
+'''
+# 인프라 배포 -> 보안 설정 -> 모니터링 데이터 확보
+if __name__ == "__main__":
+    manager = OpenStackManager()
+    PROM_URL = "http://192.168.35.100:9090"
+    
+    # 인스턴스 생성 및 보안 그룹 자동 적용 테스트
+    print("Step 1: 인스턴스 및 보안 그룹 자동 배포 테스트")
+    res = manager.create_vps_with_access(
+        "sg-test-vps", "shared_net", "cirros", "m1.tiny", "khs-main-keypair"
+    )
+    print(f"생성 완료! Floating IP: {res['floating_ip']}")
+
+    # 모니터링 데이터 연동 테스트 (인스턴스 부팅 시간을 위해 잠시 대기)
+    print("\nStep 2: 실시간 모니터링 데이터 조회 테스트 (20초 대기...)")
+    time.sleep(20)
+    usage = manager.get_instance_cpu_usage(PROM_URL, res['floating_ip'])
+    print(f"인스턴스({res['floating_ip']}) 현재 CPU 사용률: {usage}%")
+'''
+
+'''
+# Packer로 빌드한 이미지로 인스턴스를 생성 후 모니터링 메트릭이 정상 수집되는지 확인
+# 인스턴스 생성 - 보안 그룹 생성 및 연결 - 익스포터 활성화 대기했다가 모니터링
+if __name__ == "__main__":
+    manager = OpenStackManager()
+    
+    INSTANCE_NAME = "automated-monitoring-vps"
+    NETWORK_NAME = "shared_net" 
+    IMAGE_NAME = "ubuntu-22.04-monitoring-v1"
+    FLAVOR_NAME = "m1.small"
+    KEY_NAME = "khs-main-keypair"
+    PROM_URL = "http://192.168.35.100:9090"
+
+    try:
+        print(f"--- [자동화 테스트] {INSTANCE_NAME} 배포 시작 ---")
+        # 익스포터가 포함된 인스턴스 생성
+        result = manager.create_vps_with_access(
+            INSTANCE_NAME, NETWORK_NAME, IMAGE_NAME, FLAVOR_NAME, KEY_NAME
+        )
+        print(f"배포 성공! IP: {result['floating_ip']}")
+
+        # 서비스 안정화 대기 (부팅 및 네트워크 활성화 시간)
+        print("인스턴스 부팅 및 익스포터 활성화 대기 중 (40초)...")
+        time.sleep(40)
+
+        # 모니터링 데이터 수집 확인
+        print(f"--- [모니터링 확인] {result['floating_ip']} 지표 조회 ---")
+        usage = manager.get_instance_cpu_usage(PROM_URL, result['floating_ip'])
+        print(f"현재 CPU 사용률: {usage}%")
+
+    except Exception as e:
+        print(f"--- [실패] {e} ---")
+'''        
+
+

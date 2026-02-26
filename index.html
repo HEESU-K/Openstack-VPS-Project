@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Cloud Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-white p-10">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold mb-8 text-blue-400">DCloud Infra - Instance 관리</h1>
+        
+        <div class="grid grid-cols-3 gap-6 mb-10">
+            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                <p class="text-gray-400">활성 인스턴스</p>
+                <p id="total-instances" class="text-2xl font-bold">0 / 10</p>
+            </div>
+            </div>
+
+        <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
+            <table class="w-full text-left">
+                <thead class="bg-gray-700 text-gray-300">
+                    <tr>
+                        <th class="p-4">이름</th>
+                        <th class="p-4">상태</th>
+                        <th class="p-4">IP 주소</th>
+                        <th class="p-4">CPU 사용률</th>
+                        <th class="p-4">작업</th>
+                    </tr>
+                </thead>
+                <tbody id="instance-list">
+                    </tbody>
+            </table>
+        </div>
+
+        <div class="mt-10 bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <h2 class="text-xl font-bold mb-4">실시간 리소스 추이 (CPU)</h2>
+            <canvas id="cpuChart" height="100"></canvas>
+        </div>
+    </div>
+    
+
+    <script>
+        // 1. 차트 초기화 (함수 밖에서 한 번만 실행)
+        const ctx = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // 시간축 (X축)
+                datasets: [{
+                    label: '전체 인스턴스 평균 CPU 사용률 (%)',
+                    data: [], // 실제 사용량 (Y축)
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, max: 100 } // CPU는 0~100% 범위
+                }
+            }
+        });
+
+        async function fetchDashboard() {
+            try {
+                const response = await fetch('http://localhost:8000/api/dashboard');
+                const data = await response.json();
+                
+                // 테이블 업데이트 로직
+                const list = document.getElementById('instance-list');
+                list.innerHTML = '';
+                
+                let totalCpu = 0;
+                let count = 0;
+
+                data.forEach(inst => {
+                    // 평균 CPU 계산을 위한 로직 (No Data 제외)
+                    if (inst.cpu !== 'No Data') {
+                        totalCpu += parseFloat(inst.cpu);
+                        count++;
+                    }
+
+                    list.innerHTML += `
+                        <tr class="border-t border-gray-700">
+                            <td class="p-4 font-semibold">${inst.name}</td>
+                            <td class="p-4"><span class="px-2 py-1 ${inst.status === 'ACTIVE' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'} rounded text-xs">${inst.status}</span></td>
+                            <td class="p-4 text-sm">
+                                <div class="text-gray-400">내부: ${inst.fixed_ip}</div>
+                                <div class="text-blue-400">외부: ${inst.floating_ip}</div>
+                            </td>
+                            <td class="p-4 text-blue-400 font-mono">${inst.cpu}${inst.cpu !== 'No Data' ? '%' : ''}</td>
+                            <td class="p-4"><button class="text-red-400 hover:underline">삭제</button></td>
+                        </tr>
+                    `;
+                });
+
+                document.getElementById('total-instances').innerText = `${data.length} / 10`;
+
+                // 2. 그래프 데이터 업데이트 로직
+                const avgCpu = count > 0 ? (totalCpu / count).toFixed(2) : 0;
+                const now = new Date().toLocaleTimeString();
+
+                // 데이터가 너무 많아지면 앞부분 삭제 (최근 10개만 유지)
+                if (cpuChart.data.labels.length > 10) {
+                    cpuChart.data.labels.shift();
+                    cpuChart.data.datasets[0].data.shift();
+                }
+
+                // 새로운 데이터 추가
+                cpuChart.data.labels.push(now);
+                cpuChart.data.datasets[0].data.push(avgCpu);
+                
+                // 차트 갱신
+                cpuChart.update();
+
+            } catch (error) {
+                console.error("데이터 로드 실패:", error);
+            }
+        }
+        
+        // 10초마다 데이터 갱신
+        setInterval(fetchDashboard, 10000);
+        fetchDashboard();
+    </script>
+</body>
+</html>
