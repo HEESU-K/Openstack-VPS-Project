@@ -41,8 +41,22 @@ async def get_users():
 @app.get("/api/dashboard")
 async def get_dashboard():
     try:
-        data = manager.get_unified_dashboard_data(PROM_URL)
-        return data    
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        db_users = conn.execute('SELECT username, project_id, project_name FROM users').fetchall()
+        conn.close()
+        
+        user_map = {u['project_id']: u['username'] for u in db_users}
+        project_name_map = {u['project_id']: u['project_name'] for u in db_users}
+        
+        all_instances = manager.get_unified_dashboard_data(PROM_URL)
+        
+        for inst in all_instances:
+            p_id = inst.get('project_id')
+            inst['owner'] = user_map.get(p_id, "Unknown")
+            inst['project_display_name'] = project_name_map.get(p_id, "Admin/Other")
+            
+        return all_instances
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     

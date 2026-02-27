@@ -2,73 +2,110 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>HCLOUD - Cloud Management Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HCloud - Cloud Management Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .bg-gray-750 { background-color: #1f293a; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white p-10">
+<body class="bg-gray-900 text-white p-6 md:p-10">
+
     <div class="max-w-6xl mx-auto">
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex justify-between items-center mb-10">
             <div>
-                <h1 class="text-3xl font-bold text-blue-400">HCloud Infra - Instance 관리</h1>
-                <p id="user-greeting" class="text-gray-400 mt-1">시스템 관리자 모드로 접속 중</p>
+                <h1 class="text-3xl font-bold text-blue-400 tracking-tight">HCloud Infra</h1>
             </div>
-            <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-bold transition">
+            <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 px-6 py-2.5 rounded-lg font-bold shadow-lg shadow-blue-900/20 transition-all active:scale-95">
                 + 새 인스턴스 배포
             </button>
         </div>
-        
-        <div class="grid grid-cols-3 gap-6 mb-10">
-            <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                <p class="text-gray-400">전체 활성 인스턴스</p>
-                <p id="total-instances" class="text-2xl font-bold">0 / 10</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                <p class="text-gray-400 text-sm font-medium mb-1">전체 활성 인스턴스</p>
+                <p id="total-instances" class="text-3xl font-bold">0 <span class="text-lg text-gray-500 font-normal">/ 10</span></p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                <p class="text-gray-400 text-sm font-medium mb-1">리소스 사용 프로젝트</p>
+                <p id="active-projects" class="text-3xl font-bold">0</p>
+            </div>
+            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl border-l-4 border-l-blue-500">
+                <p class="text-gray-400 text-sm font-medium mb-1">인프라 상태</p>
+                <p class="text-2xl font-bold text-blue-400">Stable</p>
             </div>
         </div>
 
-        <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
-            <table class="w-full text-left">
-                <thead class="bg-gray-700 text-gray-300">
-                    <tr>
-                        <th class="p-4">이름</th>
-                        <th class="p-4">상태</th>
-                        <th class="p-4">IP 주소 (Fixed/Floating)</th>
-                        <th class="p-4">CPU 사용률</th>
-                        <th class="p-4">작업</th>
-                    </tr>
-                </thead>
-                <tbody id="instance-list">
-                    </tbody>
-            </table>
+        <div class="bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-2xl">
+            <div class="p-5 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-bold">인스턴스 리스트</h2>
+                <span class="text-xs text-gray-500 uppercase tracking-widest">Real-time update: 10s</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-700/50 text-gray-400 text-xs uppercase">
+                        <tr>
+                            <th class="p-4">소유자 (프로젝트)</th>
+                            <th class="p-4">인스턴스 이름</th>
+                            <th class="p-4">상태</th>
+                            <th class="p-4">IP 주소 (Internal/Floating)</th>
+                            <th class="p-4">CPU (%)</th>
+                            <th class="p-4 text-center">작업</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instance-list" class="divide-y divide-gray-700">
+                        </tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="mt-10 bg-gray-800 p-6 rounded-lg border border-gray-700">
-            <h2 class="text-xl font-bold mb-4">전체 리소스 실시간 추이 (CPU)</h2>
-            <canvas id="cpuChart" height="100"></canvas>
+        <div class="mt-10 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+            <h2 class="text-xl font-bold mb-6 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                전체 인프라 CPU 부하 추이
+            </h2>
+            <div class="h-64">
+                <canvas id="cpuChart"></canvas>
+            </div>
         </div>
     </div>
 
-    <div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="bg-gray-800 p-8 rounded-lg border border-gray-700 w-96">
-            <h2 class="text-xl font-bold mb-4 text-white">새 인스턴스 배포</h2>
-            <div class="mb-4">
-                <label class="block text-gray-400 mb-2">인스턴스 이름</label>
-                <input type="text" id="new-inst-name" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white" placeholder="예: web-server-01">
+    <div id="create-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md shadow-2xl transform transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-white">Cloud Instance 배포</h2>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
-            <div class="mb-6">
-                <label class="block text-gray-400 mb-2">대상 사용자 (테넌트 격리)</label>
-                <select id="user-select" class="w-full bg-gray-900 border border-gray-600 p-2 rounded text-white">
-                    </select>
-                <p class="text-xs text-gray-500 mt-2">* 선택한 사용자의 VXLAN 네트워크에 격리 배포됩니다.</p>
-            </div>
-            <div class="flex justify-end gap-3">
-                <button onclick="closeModal()" class="text-gray-400 hover:text-white">취소</button>
-                <button id="submit-btn" onclick="submitCreate()" class="bg-blue-600 px-4 py-2 rounded font-bold">생성 시작</button>
+            
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">인스턴스 명칭</label>
+                    <input type="text" id="new-inst-name" class="w-full bg-gray-900 border border-gray-700 p-3 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" placeholder="예: web-server-01">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-2">대상 사용자 및 테넌트</label>
+                    <select id="user-select" class="w-full bg-gray-900 border border-gray-700 p-3 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                        </select>
+                    <p class="text-[11px] text-gray-500 mt-2 px-1 leading-relaxed">
+                        💡 선택한 사용자의 **VXLAN 가상 네트워크**에 독립적으로 배포되며, L2 Isolation이 자동으로 적용됩니다.
+                    </p>
+                </div>
+                
+                <div class="pt-4 flex gap-3">
+                    <button onclick="closeModal()" class="flex-1 px-4 py-3 rounded-lg font-bold text-gray-400 hover:bg-gray-700 transition">취소</button>
+                    <button id="submit-btn" onclick="submitCreate()" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg font-bold transition shadow-lg shadow-blue-900/40">배포 시작</button>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 1. 글로벌 차트 객체 초기화
+        // --- 글로벌 객체 설정 ---
         const ctx = document.getElementById('cpuChart').getContext('2d');
         const cpuChart = new Chart(ctx, {
             type: 'line',
@@ -77,26 +114,33 @@
                 datasets: [{
                     label: '평균 CPU 사용률 (%)',
                     data: [],
-                    borderColor: 'rgb(59, 130, 246)',
+                    borderColor: '#3b82f6',
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 3,
                     fill: true,
-                    tension: 0.3
+                    tension: 0.4,
+                    pointRadius: 2
                 }]
             },
             options: {
                 responsive: true,
-                scales: { y: { beginAtZero: true, max: 100 } }
+                maintainAspectRatio: false,
+                scales: { 
+                    y: { beginAtZero: true, max: 100, grid: { color: '#374151' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: false } }
             }
         });
 
-        // 2. 초기 로드 (유저 목록 및 대시보드 데이터)
+        // --- 초기화 및 대시보드 데이터 로드 ---
         window.onload = async () => {
             await fetchUsers();
             await fetchDashboard();
-            setInterval(fetchDashboard, 10000); // 10초마다 갱신
+            setInterval(fetchDashboard, 10000); // 10초 주기
         };
 
-        // 3. DB 유저 목록 가져오기
+        // 1. 유저 목록 가져오기 (DB 연동)
         async function fetchUsers() {
             try {
                 const response = await fetch('http://localhost:8000/api/users');
@@ -108,14 +152,12 @@
                         `<option value="${u.username}">${u.username} (${u.project_name})</option>`
                     ).join('');
                 } else {
-                    select.innerHTML = '<option value="">등록된 유저 없음</option>';
+                    select.innerHTML = '<option value="">사용 가능한 프로젝트 없음</option>';
                 }
-            } catch (e) {
-                console.error("유저 목록 로드 실패", e);
-            }
+            } catch (e) { console.error("User Load Error:", e); }
         }
 
-        // 4. 대시보드 데이터(인스턴스 + 메트릭) 가져오기
+        // 2. 대시보드 리스트 및 차트 갱신
         async function fetchDashboard() {
             try {
                 const response = await fetch('http://localhost:8000/api/dashboard');
@@ -126,33 +168,53 @@
                 
                 let totalCpu = 0;
                 let count = 0;
+                const uniqueProjects = new Set();
 
                 data.forEach(inst => {
                     if (inst.cpu !== 'No Data') {
                         totalCpu += parseFloat(inst.cpu);
                         count++;
                     }
+                    if(inst.project_id) uniqueProjects.add(inst.project_id);
 
                     list.innerHTML += `
-                        <tr class="border-t border-gray-700">
-                            <td class="p-4 font-semibold">${inst.name}</td>
-                            <td class="p-4"><span class="px-2 py-1 ${inst.status === 'ACTIVE' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'} rounded text-xs">${inst.status}</span></td>
-                            <td class="p-4 text-sm">
-                                <div class="text-gray-400 text-xs">Fixed: ${inst.fixed_ip}</div>
-                                <div class="text-blue-400 font-bold">Floating: ${inst.floating_ip}</div>
+                        <tr class="hover:bg-gray-700/30 transition-colors">
+                            <td class="p-4">
+                                <div class="text-blue-400 font-bold text-sm">${inst.owner || 'Admin'}</div>
+                                <div class="text-[10px] text-gray-500 font-mono">${inst.project_display_name || 'System'}</div>
                             </td>
-                            <td class="p-4 text-blue-400 font-mono">${inst.cpu}${inst.cpu !== 'No Data' ? '%' : ''}</td>
-                            <td class="p-4"><button class="text-red-400 hover:underline text-sm">인스턴스 삭제</button></td>
+                            <td class="p-4">
+                                <div class="font-semibold text-gray-200">${inst.name}</div>
+                                <div class="text-[10px] text-gray-500">ID: ${inst.instance_id.substring(0,8)}...</div>
+                            </td>
+                            <td class="p-4">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${inst.status === 'ACTIVE' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">
+                                    ${inst.status}
+                                </span>
+                            </td>
+                            <td class="p-4 font-mono text-xs">
+                                <div class="text-gray-400">Int: ${inst.fixed_ip}</div>
+                                <div class="text-blue-300 font-bold">Ext: ${inst.floating_ip}</div>
+                            </td>
+                            <td class="p-4 text-blue-400 font-bold font-mono">
+                                ${inst.cpu}${inst.cpu !== 'No Data' ? '%' : ''}
+                            </td>
+                            <td class="p-4 text-center">
+                                <button onclick="deleteInstance('${inst.instance_id}')" class="text-gray-500 hover:text-red-400 transition transform hover:scale-110">
+                                    <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                </button>
+                            </td>
                         </tr>
                     `;
                 });
 
                 document.getElementById('total-instances').innerText = `${data.length} / 10`;
+                document.getElementById('active-projects').innerText = uniqueProjects.size;
 
                 // 차트 업데이트
                 const avgCpu = count > 0 ? (totalCpu / count).toFixed(2) : 0;
                 const now = new Date().toLocaleTimeString();
-                if (cpuChart.data.labels.length > 10) {
+                if (cpuChart.data.labels.length > 12) {
                     cpuChart.data.labels.shift();
                     cpuChart.data.datasets[0].data.shift();
                 }
@@ -160,49 +222,57 @@
                 cpuChart.data.datasets[0].data.push(avgCpu);
                 cpuChart.update();
 
-            } catch (error) {
-                console.error("대시보드 갱신 실패:", error);
-            }
+            } catch (error) { console.error("Dashboard Sync Error:", error); }
         }
 
-        // 5. 모달 및 생성 로직
-        function openModal() { document.getElementById('create-modal').classList.remove('hidden'); }
-        function closeModal() { document.getElementById('create-modal').classList.add('hidden'); }
-
+        // 3. 인스턴스 배포 요청
         async function submitCreate() {
             const name = document.getElementById('new-inst-name').value;
             const username = document.getElementById('user-select').value;
             const btn = document.getElementById('submit-btn');
             
-            if(!name) return alert("인스턴스 이름을 입력하세요.");
-            if(!username) return alert("사용자를 선택하세요.");
+            if(!name) return alert("인스턴스 명칭을 입력하세요.");
 
-            btn.innerText = "배포 중 (VXLAN 설정 중)...";
+            btn.innerText = "리소스 할당 중...";
             btn.disabled = true;
 
             try {
-                // 주소 끝에 's'가 붙었는지, method가 'POST'인지 확인!
-                const response = await fetch(`http://localhost:8000/api/instances?name=${name}&username=${username}`, {
-                    method: 'POST' 
+                // 백엔드 POST /api/instances 호출
+                const response = await fetch(`http://localhost:8000/api/instances?name=${encodeURIComponent(name)}&username=${encodeURIComponent(username)}`, {
+                    method: 'POST'
                 });
-                
                 const result = await response.json();
                 
                 if(response.ok && result.status === "success") {
-                    alert(`성공: ${username}님의 테넌트에 배포되었습니다.`);
+                    alert(`성공: ${username} 테넌트의 격리 네트워크에 배포되었습니다.`);
                     closeModal();
-                    fetchDashboard(); 
+                    fetchDashboard();
                 } else {
-                    // 에러 메시지가 있다면 출력
-                    alert("배포 실패: " + (result.detail || "알 수 없는 에러"));
+                    throw new Error(result.detail || "오픈스택 자원 부족 또는 통신 오류");
                 }
             } catch (e) {
                 alert("배포 실패: " + e.message);
             } finally {
-                btn.innerText = "생성 시작";
+                btn.innerText = "배포 시작";
                 btn.disabled = false;
             }
         }
+
+        // 4. 인스턴스 삭제 (추가 제안)
+        async function deleteInstance(id) {
+            if(!confirm("정말로 이 인스턴스를 삭제하시겠습니까? (연결된 Floating IP 및 보안그룹이 함께 정리됩니다.)")) return;
+            try {
+                const response = await fetch(`http://localhost:8000/api/instances/${id}`, { method: 'DELETE' });
+                if(response.ok) {
+                    alert("삭제 요청이 전달되었습니다.");
+                    fetchDashboard();
+                }
+            } catch (e) { alert("삭제 실패: " + e); }
+        }
+
+        // 모달 제어
+        function openModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+        function closeModal() { document.getElementById('create-modal').classList.add('hidden'); }
     </script>
 </body>
 </html>

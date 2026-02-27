@@ -2,6 +2,7 @@ import openstack
 import requests
 import time
 from openstack.connection import Connection
+from datetime import datetime
 
 class OpenStackManager:
     # clouds.yaml을 사용하여 인증 정보 외부화
@@ -131,7 +132,7 @@ class OpenStackManager:
         query = f'100 - (avg by (instance) (irate(node_cpu_seconds_total{{instance=~"{instance_ip}:.*", mode="idle"}}[1m])) * 100)'
         
         try:
-            response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query}, timeout=5)
+            response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query}, timeout=2)
             result = response.json()
             
             if result['data']['result']:
@@ -143,35 +144,40 @@ class OpenStackManager:
     
     def get_unified_dashboard_data(self, prometheus_url):
         # 오픈스택 인스턴스 정보와 프로메테우스 메트릭 통합
-        
-        unified_data = []
-        
-        servers = self.conn.compute.servers()
-        
-        for server in servers:
-            fixed_ip = "N/A"
-            floating_ip = "N/A"
+        try:
+            # all_projects=True : 다른 프로젝트의 인스턴스까지 보이도록
+            instances = list(self.conn.compute.servers(all_projects=True))
+            
+            unified_data = []
+            
+            for server in instances:
+                fixed_ip = "N/A"
+                floating_ip = "N/A"
 
-            # 모든 네트워크 정보를 돌며 Fixed와 Floating IP를 구분해서 추출
-            for net_name, addr_list in server.addresses.items():
-                for addr in addr_list:
-                    if addr.get('OS-EXT-IPS:type') == 'floating':
-                        floating_ip = addr['addr']
-                    elif addr.get('OS-EXT-IPS:type') == 'fixed':
-                        fixed_ip = addr['addr']
-            
-            cpu_usage = self.get_instance_cpu_usage(prometheus_url, floating_ip)
-            
-            unified_data.append({
-                "id": server.id,
-                "name": server.name,
-                "status": server.status,
-                "fixed_ip": fixed_ip,
-                "floating_ip": floating_ip,
-                "cpu": cpu_usage,
-                "created_at": server.created_at
-            })
-        return unified_data
+                # 모든 네트워크 정보를 돌며 Fixed와 Floating IP를 구분해서 추출
+                for net_name, addr_list in server.addresses.items():
+                    for addr in addr_list:
+                        if addr.get('OS-EXT-IPS:type') == 'floating':
+                            floating_ip = addr['addr']
+                        elif addr.get('OS-EXT-IPS:type') == 'fixed':
+                            fixed_ip = addr['addr']
+                
+                cpu_usage = self.get_instance_cpu_usage(prometheus_url, floating_ip)
+                
+                unified_data.append({
+                    "instance_id": server.id,
+                    "name": server.name,
+                    "status": server.status,
+                    "project_id": server.project_id,
+                    "fixed_ip": fixed_ip,
+                    "floating_ip": floating_ip,
+                    "cpu": cpu_usage if cpu_usage is not None else "No Data",
+                    "created_at": server.created_at
+                })
+            return unified_data
+        except Exception as e:
+            print(f"Dashboard 데이터 통합 중 오류 발생 : {e}")
+            return []
 
 
 '''
