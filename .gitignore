@@ -1,4 +1,14 @@
+# python
 __pycache__/
 test.py
+*.pyc
+.venv/
+
+# openstack
+.config/
+clouds.yaml
+clouds.yaml
+
+# db
+*.db
 cloud_portal.db
-.Dockerfile.swp
