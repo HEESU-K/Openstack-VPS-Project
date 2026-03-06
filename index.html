@@ -49,32 +49,87 @@
             </div>
         </div>
 
-        <div class="bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-2xl">
-            <div class="p-5 border-b border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-bold">인스턴스 리스트</h2>
-                <span class="text-xs text-gray-500 uppercase tracking-widest">Real-time update: 10s</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-700/50 text-gray-400 text-xs uppercase">
-                        <tr>
-                            <th class="p-4">소유자 (프로젝트)</th>
-                            <th class="p-4">인스턴스 이름</th>
-                            <th class="p-4">상태</th>
-                            <th class="p-4">IP 주소 (Int/Ext)</th>
-                            <th class="p-4">CPU (%)</th>
-                            <th class="p-4 text-center">작업</th>
-                        </tr>
-                    </thead>
-                    <tbody id="instance-list" class="divide-y divide-gray-700"></tbody>
-                </table>
+        <div class="flex gap-4 mb-6 border-b border-gray-700">
+            <button onclick="switchTab('instances')" id="tab-instances" class="px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-bold transition-all">인스턴스 관리</button>
+            <button onclick="switchTab('host')" id="tab-host" class="px-4 py-2 text-gray-400 hover:text-white transition-all">호스트 모니터링</button>
+        </div>
+
+        <div id="section-instances">
+            <div class="bg-gray-800 rounded-xl overflow-hidden border border-gray-700 shadow-2xl">
+                <div class="p-5 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-xl font-bold">인스턴스 리스트</h2>
+                    <span class="text-xs text-gray-500 uppercase tracking-widest">Real-time update: 10s</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-750/50 text-gray-400 text-xs uppercase font-semibold">
+                            <tr>
+                                <th class="p-4">소유자 (프로젝트)</th>
+                                <th class="p-4">인스턴스 이름</th>
+                                <th class="p-4">상태</th>
+                                <th class="p-4">IP 주소 (Int/Ext)</th>
+                                <th class="p-4 text-center">CPU</th>
+                                <th class="p-4 text-center">MEM</th>
+                                <th class="p-4 text-center border-l border-gray-700">Disk I/O (R/W)</th>
+                                <th class="p-4 text-center">작업</th>
+                            </tr>
+                        </thead>
+                        <tbody id="instance-list" class="divide-y divide-gray-700"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="mt-10 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
-            <h2 class="text-xl font-bold mb-6 flex items-center">
+        <div id="section-host" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Host OS Load (1m)</h3>
+                    <div id="host-load-val" class="text-4xl font-bold text-white tracking-tight">0.00</div>
+                    <p class="text-[10px] text-gray-500 mt-2">대기 프로세스 수</p>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Total CPU Usage</h3>
+                    <div id="host-cpu-val" class="text-4xl font-bold text-blue-400 tracking-tight">0.00%</div>
+                    <p class="text-[10px] text-gray-500 mt-2">물리 CPU 전체 부하</p>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Total RAM Usage</h3>
+                    <div id="host-mem-val" class="text-4xl font-bold text-purple-400 tracking-tight">0.00%</div>
+                    <p class="text-[10px] text-gray-500 mt-2">전체 물리 메모리 점유율</p>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Root Disk Usage (/)</h3>
+                    <div id="host-disk-val" class="text-4xl font-bold text-orange-400 tracking-tight">0.00%</div>
+                    <p class="text-[10px] text-gray-500 mt-2">OS 파티션 사용량</p>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Network Throughput</h3>
+                    <div class="flex items-baseline gap-1">
+                        <div id="host-net-val" class="text-4xl font-bold text-emerald-400 tracking-tight">0.00</div>
+                        <span class="text-sm text-emerald-600 font-medium">Mbps</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-2">물리 인터페이스 실시간 트래픽</p>
+                </div>
+
+                <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+                    <h3 class="text-gray-400 text-sm mb-4">Disk IOPS</h3>
+                    <div class="flex items-baseline gap-1">
+                        <div id="host-iops-val" class="text-4xl font-bold text-pink-400 tracking-tight">0</div>
+                        <span class="text-sm text-pink-600 font-medium">ops/s</span>
+                    </div>
+                    <p class="text-[10px] text-gray-500 mt-2">초당 디스크 입출력 처리 수</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="infra-chart-section" class="mt-10 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-xl">
+            <h2 class="text-xl font-bold mb-6 flex items-center text-gray-300">
                 <svg class="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                인프라 부하 추이
+                인프라 부하 추이 (평균 CPU)
             </h2>
             <div class="h-64">
                 <canvas id="cpuChart"></canvas>
@@ -83,7 +138,7 @@
     </div>
 
     <div id="create-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center z-50 backdrop-blur-sm">
-        <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md shadow-2xl transform transition-all">
+        <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 w-full max-w-md shadow-2xl">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold text-white">Cloud Instance 배포</h2>
                 <button onclick="closeModal()" class="text-gray-500 hover:text-white transition">
@@ -177,10 +232,14 @@
                 data.forEach(inst => {
                     if (inst.cpu !== 'No Data') { totalCpu += parseFloat(inst.cpu); count++; }
 
+                    // 디스크 I/O가 0일 경우 '0'으로 표시, 데이터가 없을 경우 'N/A' 처리
+                    const diskInfo = inst.disk_read !== undefined ? `${inst.disk_read} / ${inst.disk_write}` : 'N/A';
+                    const memInfo = inst.memory !== 'No Data' ? `${inst.memory}%` : 'No Data';
+
                     list.innerHTML += `
-                        <tr class="hover:bg-gray-700/30 transition-colors">
+                        <tr class="hover:bg-gray-700/30 transition-colors border-b border-gray-700/50 text-sm">
                             <td class="p-4">
-                                <div class="text-blue-400 font-bold text-sm">${inst.owner || 'Admin'}</div>
+                                <div class="text-blue-400 font-bold">${inst.owner || 'Admin'}</div>
                                 <div class="text-[10px] text-gray-500 font-mono">${inst.project_display_name || 'System'}</div>
                             </td>
                             <td class="p-4">
@@ -188,16 +247,23 @@
                                 <div class="text-[10px] text-gray-500">ID: ${inst.instance_id.substring(0,8)}...</div>
                             </td>
                             <td class="p-4">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${inst.status === 'ACTIVE' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${inst.status === 'ACTIVE' ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}">
                                     ${inst.status}
                                 </span>
                             </td>
-                            <td class="p-4 font-mono text-xs">
+                            <td class="p-4 font-mono text-[11px]">
                                 <div class="text-gray-400">Int: ${inst.fixed_ip}</div>
                                 <div class="text-blue-300 font-bold">Ext: ${inst.floating_ip}</div>
                             </td>
-                            <td class="p-4 text-blue-400 font-bold font-mono">
+                            <td class="p-4 text-center text-blue-400 font-bold font-mono">
                                 ${inst.cpu}${inst.cpu !== 'No Data' ? '%' : ''}
+                            </td>
+                            <td class="p-4 text-center text-purple-400 font-bold font-mono">
+                                ${memInfo}
+                            </td>
+                            <td class="p-4 text-center text-emerald-400 font-mono text-xs">
+                                <div>${diskInfo}</div>
+                                <div class="text-[9px] text-gray-500 text-center">KB/s</div>
                             </td>
                             <td class="p-4 text-center">
                                 <button onclick="deleteInstance('${inst.instance_id}')" class="text-gray-500 hover:text-red-400 transition transform hover:scale-110">
@@ -253,6 +319,47 @@
 
         function openModal() { document.getElementById('create-modal').classList.remove('hidden'); }
         function closeModal() { document.getElementById('create-modal').classList.add('hidden'); }
+
+        function switchTab(tab) {
+            const instSec = document.getElementById('section-instances');
+            const hostSec = document.getElementById('section-host');
+            const instTab = document.getElementById('tab-instances');
+            const hostTab = document.getElementById('tab-host');
+
+            if (tab === 'instances') {
+                instSec.classList.remove('hidden');
+                hostSec.classList.add('hidden');
+                instTab.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-bold";
+                hostTab.className = "px-4 py-2 text-gray-400 hover:text-white transition";
+            } else {
+                instSec.classList.add('hidden');
+                hostSec.classList.remove('hidden');
+                hostTab.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-bold";
+                instTab.className = "px-4 py-2 text-gray-400 hover:text-white transition";
+                fetchHostMetrics();
+            }
+        }
+
+        async function fetchHostMetrics() {
+            try {
+                const res = await fetch('/api/host-metrics');
+                const data = await res.json();
+                
+                // 1. 기존 지표 업데이트
+                document.getElementById('host-load-val').innerText = data.cpu_load;
+                document.getElementById('host-cpu-val').innerText = data.cpu_usage.toFixed(2) + '%';
+                document.getElementById('host-mem-val').innerText = data.mem_usage.toFixed(2) + '%';
+                document.getElementById('host-disk-val').innerText = data.disk_usage.toFixed(2) + '%';
+                
+                // 2. 신규 네트워크 및 디스크 IOPS 업데이트
+                // 값이 없을 경우를 대비해 기본값 0 처리
+                document.getElementById('host-net-val').innerText = data.net_throughput || "0.00";
+                document.getElementById('host-iops-val').innerText = data.disk_iops || "0";
+
+            } catch (e) { 
+                console.error("Host Metrics Update Error:", e); 
+            }
+        }
     </script>
 </body>
 </html>

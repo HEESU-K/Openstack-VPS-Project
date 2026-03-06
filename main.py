@@ -127,3 +127,8 @@ async def download_private_key(username: str):
         filename=key_filename,
         media_type='application/x-pem-file'
     )
+    
+# 호스트 모니터링 
+@app.get("/api/host-metrics")
+async def host_metrics():
+    return manager.get_host_resource_usage(PROM_URL)

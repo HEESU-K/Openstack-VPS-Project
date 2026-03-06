@@ -126,22 +126,38 @@ class OpenStackManager:
         return sg
 
 
-    def get_instance_cpu_usage(self, prometheus_url, instance_ip):
-        # 프로메테우스 API를 호출해 특정 인스턴스(IP)의 CPU 사용량 조회
+
+    def get_instance_metrics(self, prometheus_url, instance_ip):
+        # 프로메테우스 API를 호출해 특정 인스턴스(IP)의 CPU / 메모리 / Disk I/O 메트릭 조회
         
-        query = f'100 - (avg by (instance) (irate(node_cpu_seconds_total{{instance=~"{instance_ip}:.*", mode="idle"}}[1m])) * 100)'
+        if instance_ip == "N/A":
+            return {"cpu": "No Data", "memory": "No Data", "disk_read": 0, "disk_write": 0}
         
-        try:
-            response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': query}, timeout=2)
-            result = response.json()
-            
-            if result['data']['result']:
-                return round(float(result['data']['result'][0]['value'][1]), 2)
-            return "No Data"
-        except Exception as e:
-            print(f"Monitoring Error : {e}")
+        queries = {
+            "cpu": f'100 - (avg by (instance) (irate(node_cpu_seconds_total{{instance=~"{instance_ip}:.*", mode="idle"}}[1m])) * 100)',
+            "memory": f'(1 - (node_memory_MemAvailable_bytes{{instance=~"{instance_ip}:.*"}} / node_memory_MemTotal_bytes{{instance=~"{instance_ip}:.*"}})) * 100',
+            "disk_read": f'sum(rate(node_disk_read_bytes_total{{instance=~"{instance_ip}:.*"}}[1m]))',
+            "disk_write": f'sum(rate(node_disk_written_bytes_total{{instance=~"{instance_ip}:.*"}}[1m]))'
+        }
         
-    
+        results = {}
+        for key, q in queries.items():
+            try:
+                response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': q}, timeout=2)
+                data = response.json()
+                
+                if data['status'] == 'success' and data['data']['result']:
+                    val = float(data['data']['result'][0]['value'][1])
+                    # 디스크 I/O는 KB/s 단위로 변환, 나머지는 소수점 둘째자리 반올림
+                    results[key] = round(val / 1024, 2) if "disk" in key else round(val, 2)
+                else:
+                    results[key] = "No Data" if "disk" not in key else 0
+            except Exception as e:
+                print(f"Metrics Error ({key}): {e}")
+                results[key] = "Error"
+        return results
+        
+        
     def get_unified_dashboard_data(self, prometheus_url):
         # 오픈스택 인스턴스 정보와 프로메테우스 메트릭 통합
         try:
@@ -162,7 +178,7 @@ class OpenStackManager:
                         elif addr.get('OS-EXT-IPS:type') == 'fixed':
                             fixed_ip = addr['addr']
                 
-                cpu_usage = self.get_instance_cpu_usage(prometheus_url, floating_ip)
+                metrics = self.get_instance_metrics(prometheus_url, floating_ip)
                 
                 unified_data.append({
                     "instance_id": server.id,
@@ -171,13 +187,17 @@ class OpenStackManager:
                     "project_id": server.project_id,
                     "fixed_ip": fixed_ip,
                     "floating_ip": floating_ip,
-                    "cpu": cpu_usage if cpu_usage is not None else "No Data",
+                    "cpu": metrics["cpu"],
+                    "memory": metrics["memory"],
+                    "disk_read": metrics["disk_read"],
+                    "disk_write": metrics["disk_write"],
                     "created_at": server.created_at
                 })
             return unified_data
         except Exception as e:
             print(f"Dashboard 데이터 통합 중 오류 발생 : {e}")
             return []
+        
         
         
     def delete_instance(self, instance_id):
@@ -284,86 +304,34 @@ class OpenStackManager:
         except Exception as e:
             print(f"인프라 자동 구축 실패 : {e}")
             raise e
-            
 
-'''
-# 인스턴스 생성 후 floating ip 할당 테스트
-# create_vps_with_access 테스트
-if __name__ == "__main__":
-    manager = OpenStackManager()
-    
-    INSTANCE_NAME = "portfolio-vps-01"
-    NETWORK_NAME = "shared_net" 
-    IMAGE_NAME = "cirros" 
-    FLAVOR_NAME = "m1.tiny"
-    KEY_NAME = "khs-main-keypair"
-    
-    try:
-        print(f"--- [테스트] {INSTANCE_NAME} 생성 시작 ---")
-        result = manager.create_vps_with_access(
-            INSTANCE_NAME, NETWORK_NAME, IMAGE_NAME, FLAVOR_NAME, KEY_NAME
-        )
-        print("--- [성공] 인스턴스 정보 ---")
-        print(f"ID: {result['instance_id']}")
-        print(f"Fixed IP: {result['fixed_ip']}")
-        print(f"Floating IP: {result['floating_ip']}")
+
+    def get_host_resource_usage(self, prometheus_url):
+        host_label = 'instance=~"localhost:9100.*"' 
         
-    except Exception as e:
-        print(f"--- [실패] 에러 발생: {e} ---")
-'''
-
-'''
-# 인프라 배포 -> 보안 설정 -> 모니터링 데이터 확보
-if __name__ == "__main__":
-    manager = OpenStackManager()
-    PROM_URL = "http://192.168.35.100:9090"
-    
-    # 인스턴스 생성 및 보안 그룹 자동 적용 테스트
-    print("Step 1: 인스턴스 및 보안 그룹 자동 배포 테스트")
-    res = manager.create_vps_with_access(
-        "sg-test-vps", "shared_net", "cirros", "m1.tiny", "khs-main-keypair"
-    )
-    print(f"생성 완료! Floating IP: {res['floating_ip']}")
-
-    # 모니터링 데이터 연동 테스트 (인스턴스 부팅 시간을 위해 잠시 대기)
-    print("\nStep 2: 실시간 모니터링 데이터 조회 테스트 (20초 대기...)")
-    time.sleep(20)
-    usage = manager.get_instance_cpu_usage(PROM_URL, res['floating_ip'])
-    print(f"인스턴스({res['floating_ip']}) 현재 CPU 사용률: {usage}%")
-'''
-
-'''
-# Packer로 빌드한 이미지로 인스턴스를 생성 후 모니터링 메트릭이 정상 수집되는지 확인
-# 인스턴스 생성 - 보안 그룹 생성 및 연결 - 익스포터 활성화 대기했다가 모니터링
-if __name__ == "__main__":
-    manager = OpenStackManager()
-    
-    INSTANCE_NAME = "automated-monitoring-vps"
-    NETWORK_NAME = "shared_net" 
-    IMAGE_NAME = "ubuntu-22.04-monitoring-v1"
-    FLAVOR_NAME = "m1.small"
-    KEY_NAME = "khs-main-keypair"
-    PROM_URL = "http://192.168.35.100:9090"
-
-    try:
-        print(f"--- [자동화 테스트] {INSTANCE_NAME} 배포 시작 ---")
-        # 익스포터가 포함된 인스턴스 생성
-        result = manager.create_vps_with_access(
-            INSTANCE_NAME, NETWORK_NAME, IMAGE_NAME, FLAVOR_NAME, KEY_NAME
-        )
-        print(f"배포 성공! IP: {result['floating_ip']}")
-
-        # 서비스 안정화 대기 (부팅 및 네트워크 활성화 시간)
-        print("인스턴스 부팅 및 익스포터 활성화 대기 중 (40초)...")
-        time.sleep(40)
-
-        # 모니터링 데이터 수집 확인
-        print(f"--- [모니터링 확인] {result['floating_ip']} 지표 조회 ---")
-        usage = manager.get_instance_cpu_usage(PROM_URL, result['floating_ip'])
-        print(f"현재 CPU 사용률: {usage}%")
-
-    except Exception as e:
-        print(f"--- [실패] {e} ---")
-'''        
-
-
+        queries = {
+            "cpu_load": f"node_load1{{{host_label}}}",
+            "cpu_usage": f"100 - (avg by (instance) (irate(node_cpu_seconds_total{{{host_label}, mode='idle'}}[1m])) * 100)",
+            "mem_usage": f"(1 - (avg by (instance) (node_memory_MemAvailable_bytes{{{host_label}}}) / avg by (instance) (node_memory_MemTotal_bytes{{{host_label}}}))) * 100",
+            "disk_usage": f"100 - (sum by (instance) (node_filesystem_avail_bytes{{{host_label}, mountpoint='/etc/hosts'}}) / sum by (instance) (node_filesystem_size_bytes{{{host_label}, mountpoint='/etc/hosts'}}) * 100)",
+            "net_throughput": f"(sum(rate(node_network_receive_bytes_total{{{host_label}, device!~'lo|veth.*|docker.*|br.*|tap.*'}}[1m])) + sum(rate(node_network_transmit_bytes_total{{{host_label}, device!~'lo|veth.*|docker.*|br.*|tap.*'}}[1m]))) * 8 / 1024 / 1024",
+            "disk_iops": f"sum(rate(node_disk_reads_completed_total{{{host_label}}}[1m])) + sum(rate(node_disk_writes_completed_total{{{host_label}}}[1m]))"
+        }
+        
+        results = {}
+        for key, q in queries.items():
+            try:
+                
+                response = requests.get(f"{prometheus_url}/api/v1/query", params={'query': q}, timeout=5)
+                data = response.json()
+                
+                if not data['data']['result']:
+                    print(f"[빈 결과 발생] {key} 쿼리에 데이터가 없습니다: {q}")
+                    results[key] = 0.00
+                else:
+                    val = float(data['data']['result'][0]['value'][1])
+                    results[key] = round(val, 2)
+            except Exception as e:
+                print(f"Query Error ({key}): {e}")
+                results[key] = "Error"
+        return results
