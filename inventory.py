@@ -31,6 +31,12 @@ def get_inventory():
                 all_projects=True,
                 uuid=row['instance_id']
             ))
+            
+            if not servers:
+                import sys
+                print(f"Warning: Instance {row['instance_id']} not found in OpenStack. Skipping...", file=sys.stderr)
+                continue
+            
             server = servers[0]
             
             # Floating IP 찾기
@@ -48,7 +54,7 @@ def get_inventory():
             inventory['_meta']['hostvars'][hostname] = {
                 'ansible_host': floating_ip,
                 'ansible_user': 'ubuntu',
-                'ansible_ssh_private_key_file': f"./user_keys/{row['username']}_key.pem",
+                'ansible_ssh_private_key_file': os.path.join(BASE_DIR, "user_keys", f"{row['username']}_key.pem"),
                 'ansible_ssh_common_args': '-o StrictHostKeyChecking=no',
                 'target_hostname': row['instance_name']
             }
