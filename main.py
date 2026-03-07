@@ -143,8 +143,17 @@ async def create_instance(name: str, username: str, background_tasks: Background
 async def delete_instance(instance_id: str):
     try:
         manager.delete_instance(instance_id)
-        return {"status": "success", "message": "Instance deletion complete"}
+    
+        # 인스턴스 삭제 시 DB에서도 삭제
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM instances WHERE instance_id = ?", (instance_id,))
+        conn.commit()
+        conn.close()
+        
+        return {"status": "success", "message": "오픈스택 자원 및 DB 기록 삭제 완료"}
     except Exception as e:
+        print(f"인스턴스 삭제 오류 : {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
 
@@ -187,8 +196,18 @@ async def get_cleanup_list():
         db_ids = [row[0] for row in conn.execute("SELECT instance_id FROM instances").fetchall()]
         conn.close()
         
-        # 드라이버를 통해 정리 대상 필터링
+        # 정리 대상 필터링
         return manager.get_cleanup_candidates(db_ids)
     except Exception as e:
         print(f"❌ Cleanup API Error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+@app.delete("/api/fips/destroy/{fip_id}")
+async def delete_fip(fip_id: str):
+    try:
+        # 오픈스택 드라이버를 통해 IP 직접 삭제
+        manager.conn.network.delete_ip(fip_id)
+        return {"status": "success", "message": "Floating IP 회수 완료"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))    

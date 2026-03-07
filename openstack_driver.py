@@ -235,6 +235,16 @@ class OpenStackManager:
         except Exception as e:
             print(f"인스턴스 삭제 오류 : {e}")
             raise e
+    
+       
+    def delete_floating_ip(self, fip_id):
+        # Floating IP만 회수용
+        try:
+            self.conn.network.delete_ip(fip_id)
+            return True
+        except Exception as e:
+            print(f"Floating IP 삭제 오류 : {e}")
+            raise e
 
 
     def setup_tenant_infrastructure(self, username):
@@ -338,6 +348,7 @@ class OpenStackManager:
     
     
     def get_cleanup_candidates(self, db_instance_ids):
+        # 조건에 의해 정리가 필요한 리소스 필터링
         cleanup_list = []
         now = datetime.now(timezone.utc)
         
