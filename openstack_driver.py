@@ -364,12 +364,12 @@ class OpenStackManager:
             is_old = (now - created_at) > timedelta(hours=1)
             is_orphaned = server.id not in db_instance_ids
             
-            if is_old or is_orphaned:
+            if is_old or is_orphaned: # (인스턴스) DB에 없거나 | 생성된지 오래 됐거나
                 cleanup_list.append({
                     "type": "Instance",
                     "id": server.id,
                     "name": server.name,
-                    "reason": "12시간 경과" if is_old else "유령 리소스(DB 미등록)",
+                    "reason": "생성 12시간 경과" if is_old else "DB 미등록 인스턴스",
                     "created_at": raw_time # 오픈스택 기준 시간
                 })
 
