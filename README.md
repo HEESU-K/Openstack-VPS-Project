@@ -67,7 +67,7 @@ ssh -i [본인_키_이름].pem ubuntu@192.168.35.xxx
 ```
 ---
 
-## 📊 대시보드 구성 및 모니터링
+## 대시보드 구성 및 모니터링
 
 ### 1. 메인 대시보드 (인스턴스 관리)
 <img width="1298" alt="메인 대시보드 화면" src="https://github.com/user-attachments/assets/7c63010a-6ad3-4663-99d4-80809d0a6508" />
