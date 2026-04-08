@@ -4,8 +4,9 @@
 
 ---
 - **특정 프로젝트에서 인스턴스 생성 및 모니터링**
+- 
+![infra 프로젝트에서 인스턴스 생성](https://github.com/user-attachments/assets/38a0ef41-697d-441e-8d4d-9e99c1e57890)
 
-![Image](https://github.com/user-attachments/assets/f6ca439a-6973-41ab-a518-fc1a43b29033)
 ---
 - **사용하지 않는 인스턴스 회수**
 
@@ -111,7 +112,7 @@ ssh -i [본인_키_이름].pem ubuntu@192.168.35.xxx
 * **회수 기능** : 회수 버튼을 눌러 오픈스택 자원을 삭제합니다.
 ---
 ### 3. 멀티 테넌트 뷰 (멀티 테넌트 필터)
-<img width="1199" alt="멀티 테넌트 뷰" src="https://github.com/user-attachments/assets/8c7536db-c330-4fdd-b9d6-cfb4c5f9a753" />
+<img width="1134" height="875" alt="스크린샷 2026-04-08 114554" src="https://github.com/user-attachments/assets/4fbaf423-1c17-43b4-8573-476425e2bbf2" />
 
 * 특정 프로젝트(사용자)별 인스턴스 현황을 조회할 수 있습니다.
 * 다중 사용자 환경에서 각 테넌트의 인프라 상태를 독립적으로 관리 및 모니터링할 수 있습니다.
